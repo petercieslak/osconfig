@@ -172,6 +172,30 @@ func (c *Client) reportInventory(ctx context.Context, inventory *agentendpointpb
 	return resp, err
 }
 
+func (c *Client) reportVmInventory(ctx context.Context, inventory *agentendpointpb.VmInventory, reportFull bool) (*agentendpointpb.ReportVmInventoryResponse, error) {
+	token, err := agentconfig.IDToken()
+	if err != nil {
+		return nil, err
+	}
+
+	checksum, err := computeStableFingerprintVmInventory(ctx, inventory)
+	if err != nil {
+		return nil, fmt.Errorf("unable to compute hash, err: %w", err)
+	}
+
+	req := &agentendpointpb.ReportVmInventoryRequest{InventoryChecksum: checksum}
+	if reportFull {
+		req = &agentendpointpb.ReportVmInventoryRequest{InventoryChecksum: checksum, VmInventory: inventory}
+	}
+	req.InstanceIdToken = "<redacted>"
+	clog.DebugRPC(ctx, "ReportVmInventory", req, nil)
+	req.InstanceIdToken = token
+
+	resp, err := c.raw.ReportVmInventory(ctx, req)
+	clog.DebugRPC(ctx, "ReportVmInventory", nil, resp)
+	return resp, err
+}
+
 func (c *Client) startNextTask(ctx context.Context) (res *agentendpointpb.StartNextTaskResponse, err error) {
 	token, err := agentconfig.IDToken()
 	if err != nil {

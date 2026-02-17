@@ -72,6 +72,10 @@ type InstalledPackagesProvider interface {
 	GetInstalledPackages(context.Context) (Packages, error)
 }
 
+type ScalibrPackagesProvider interface {
+	GetScalibrInstalledPackages(context.Context) ([]*InventoryItem, error)
+}
+
 type defaultUpdatesProvider struct{}
 
 // NewPackageUpdatesProvider return fully initialize provider.
@@ -104,6 +108,15 @@ type Packages struct {
 	WUA                []*WUAPackage         `json:"wua,omitempty"`
 	QFE                []*QFEPackage         `json:"qfe,omitempty"`
 	WindowsApplication []*WindowsApplication `json:"-"`
+}
+
+type InventoryItem struct {
+	Name     string
+	Type     string
+	Version  string
+	Purl     string
+	Location []string
+	Metadata map[string]any
 }
 
 // PkgInfo describes a package.

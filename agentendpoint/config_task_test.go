@@ -123,6 +123,10 @@ func (*agentEndpointServiceConfigTestServer) ReportInventory(ctx context.Context
 	return nil, status.Errorf(codes.Unimplemented, "method ReportInventory not implemented")
 }
 
+func (*agentEndpointServiceConfigTestServer) ReportVmInventory(ctx context.Context, req *agentendpointpb.ReportVmInventoryRequest) (*agentendpointpb.ReportVmInventoryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReportVmInventory not implemented")
+}
+
 func configOutputGen(msg string, st agentendpointpb.ApplyConfigTaskOutput_State, results []*agentendpointpb.ApplyConfigTaskOutput_OSPolicyResult) *agentendpointpb.ReportTaskCompleteRequest {
 	return &agentendpointpb.ReportTaskCompleteRequest{
 		TaskType:     agentendpointpb.TaskType_APPLY_CONFIG_TASK,

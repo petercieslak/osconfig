@@ -216,6 +216,10 @@ func (*agentEndpointServiceTestServer) ReportInventory(ctx context.Context, req 
 	return nil, status.Errorf(codes.Unimplemented, "method ReportInventory not implemented")
 }
 
+func (*agentEndpointServiceTestServer) ReportVmInventory(ctx context.Context, req *agentendpointpb.ReportVmInventoryRequest) (*agentendpointpb.ReportVmInventoryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReportVmInventory not implemented")
+}
+
 func TestWaitForTask(t *testing.T) {
 	ctx := context.Background()
 	srv := newAgentEndpointServiceTestServer()

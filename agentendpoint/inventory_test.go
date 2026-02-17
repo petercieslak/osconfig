@@ -35,14 +35,17 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/testing/protocmp"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"cloud.google.com/go/osconfig/agentendpoint/apiv1/agentendpointpb"
 )
 
 type agentEndpointServiceInventoryTestServer struct {
-	lastReportInventoryRequest *agentendpointpb.ReportInventoryRequest
-	reportFullInventory        bool
+	lastReportInventoryRequest   *agentendpointpb.ReportInventoryRequest
+	lastReportVmInventoryRequest *agentendpointpb.ReportVmInventoryRequest
+	reportFullInventory          bool
+	useReportVmInventory         bool
 }
 
 func (*agentEndpointServiceInventoryTestServer) ReceiveTaskNotification(req *agentendpointpb.ReceiveTaskNotificationRequest, srv agentendpointpb.AgentEndpointService_ReceiveTaskNotificationServer) error {
@@ -72,6 +75,19 @@ func (s *agentEndpointServiceInventoryTestServer) ReportInventory(ctx context.Co
 		s.reportFullInventory = false
 	}
 	return resp, nil
+}
+
+func (s *agentEndpointServiceInventoryTestServer) ReportVmInventory(ctx context.Context, req *agentendpointpb.ReportVmInventoryRequest) (*agentendpointpb.ReportVmInventoryResponse, error) {
+	if s.useReportVmInventory == false {
+		return nil, status.Errorf(codes.FailedPrecondition, "Feature is not available yet.")
+	} else {
+		s.lastReportVmInventoryRequest = req
+		resp := &agentendpointpb.ReportVmInventoryResponse{ReportFullInventory: s.reportFullInventory}
+		if s.reportFullInventory {
+			s.reportFullInventory = false
+		}
+		return resp, nil
+	}
 }
 
 func generateInventoryState() *inventory.InstanceInventory {
@@ -126,6 +142,14 @@ func generateInventoryState() *inventory.InstanceInventory {
 			QFE: []*packages.QFEPackage{{Caption: "QFEInstalled", Description: "Description", HotFixID: "HotFixID", InstalledOn: "9/1/2020"}},
 			COS: []*packages.PkgInfo{{Name: "CosInstalledPkg", Arch: "Arch", Version: "Version"}},
 		},
+		NewInstalledPackages: []*packages.InventoryItem{
+			{Name: "YumInstalledPkg", Type: "rpm", Version: "SourceVersion", Purl: "SourcePurl", Location: []string{}, Metadata: map[string]any{"PackageName": "YumInstalledPackage", "SourceRPM": "SourceRPM"}},
+			{Name: "RpmInstalledPkg", Type: "rpm", Version: "SourceVersion", Purl: "SourcePurl", Location: []string{}, Metadata: map[string]any{"PackageName": "RpmInstalledPackage", "SourceRPM": "SourceRPM"}},
+			{Name: "AptInstalledPkg", Type: "deb", Version: "SourceVersion", Purl: "SourcePurl", Location: []string{}, Metadata: map[string]any{"PackageName": "AptInstalledPackage", "SourceVersion": "SourceVersion"}},
+			{Name: "DebInstalledPkg", Type: "deb", Version: "SourceVersion", Purl: "SourcePurl", Location: []string{}, Metadata: map[string]any{"PackageName": "DebInstalledPackage", "SourceVersion": "SourceVersion"}},
+			{Name: "ZypperInstalledPkg", Type: "rpm", Version: "SourceVersion", Purl: "SourcePurl", Location: []string{}, Metadata: map[string]any{"PackageName": "ZypperInstalledPackage", "SourceRPM": "SourceRPM"}},
+			{Name: "CosInstalledPkg", Type: "cos", Version: "SourceVersion", Purl: "SourcePurl", Location: []string{}, Metadata: map[string]any{"Name": "CosInstalledPackage", "Version": "SourceVersion"}},
+		},
 		PackageUpdates: &packages.Packages{
 			Yum:           []*packages.PkgInfo{{Name: "YumPkgUpdate", Arch: "Arch", Version: "Version"}},
 			Apt:           []*packages.PkgInfo{{Name: "AptPkgUpdate", Arch: "Arch", Version: "Version"}},
@@ -147,6 +171,98 @@ func generateInventoryState() *inventory.InstanceInventory {
 				UpdateID:                 "UpdateID",
 				RevisionNumber:           1,
 				LastDeploymentChangeTime: time.Time{}}},
+		},
+	}
+}
+
+func generateVmInventory() *agentendpointpb.VmInventory {
+	return &agentendpointpb.VmInventory{
+		OsInfo: &agentendpointpb.VmInventory_OsInfo{
+			HostName:             "Hostname",
+			LongName:             "LongName",
+			ShortName:            "ShortName",
+			Version:              "Version",
+			Architecture:         "Architecture",
+			KernelVersion:        "KernelVersion",
+			KernelRelease:        "KernelRelease",
+			OsconfigAgentVersion: "OSConfigAgentVersion",
+		},
+		InstalledPackages: []*agentendpointpb.VmInventory_InventoryItem{
+			{Name: "YumInstalledPkg", Type: "rpm", Version: "SourceVersion", Purl: "SourcePurl", Location: []string{}, Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
+				"PackageName": structpb.NewStringValue("YumInstalledPackage"),
+				"SourceRPM":   structpb.NewStringValue("SourceRPM"),
+			}}},
+			{Name: "RpmInstalledPkg", Type: "rpm", Version: "SourceVersion", Purl: "SourcePurl", Location: []string{}, Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
+				"PackageName": structpb.NewStringValue("RpmInstalledPackage"),
+				"SourceRPM":   structpb.NewStringValue("SourceRPM"),
+			}}},
+			{Name: "AptInstalledPkg", Type: "deb", Version: "SourceVersion", Purl: "SourcePurl", Location: []string{}, Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
+				"PackageName":   structpb.NewStringValue("AptInstalledPackage"),
+				"SourceVersion": structpb.NewStringValue("SourceVersion"),
+			}}},
+			{Name: "DebInstalledPkg", Type: "deb", Version: "SourceVersion", Purl: "SourcePurl", Location: []string{}, Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
+				"PackageName":   structpb.NewStringValue("DebInstalledPackage"),
+				"SourceVersion": structpb.NewStringValue("SourceVersion"),
+			}}},
+			{Name: "ZypperInstalledPkg", Type: "rpm", Version: "SourceVersion", Purl: "SourcePurl", Location: []string{}, Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
+				"PackageName": structpb.NewStringValue("ZypperInstalledPackage"),
+				"SourceRPM":   structpb.NewStringValue("SourceRPM"),
+			}}},
+			{Name: "CosInstalledPkg", Type: "cos", Version: "SourceVersion", Purl: "SourcePurl", Location: []string{}, Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
+				"Name":    structpb.NewStringValue("CosInstalledPackage"),
+				"Version": structpb.NewStringValue("SourceVersion"),
+			}}},
+			{Name: "ZypperInstalledPatch", Type: "ZypperPatch", Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
+				"Category": structpb.NewStringValue("Category"),
+				"Severity": structpb.NewStringValue("Severity"),
+				"Summary":  structpb.NewStringValue("Summary"),
+			}}},
+			{Name: "WUAInstalled", Type: "WUAPackage", Version: "UpdateID", Purl: "SupportURL", Location: []string{}, Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
+				"Description": structpb.NewStringValue("Description"),
+				"Categories": structpb.NewListValue(&structpb.ListValue{Values: []*structpb.Value{structpb.NewStructValue(&structpb.Struct{Fields: map[string]*structpb.Value{"Id": structpb.NewStringValue("CategoryID1"), "Name": structpb.NewStringValue("Category1")}}),
+					structpb.NewStructValue(&structpb.Struct{Fields: map[string]*structpb.Value{"Id": structpb.NewStringValue("CategoryID2"), "Name": structpb.NewStringValue("Category2")}}),
+					structpb.NewStructValue(&structpb.Struct{Fields: map[string]*structpb.Value{"Id": structpb.NewStringValue("CategoryID3"), "Name": structpb.NewStringValue("Category3")}}),
+					structpb.NewStructValue(&structpb.Struct{Fields: map[string]*structpb.Value{"Id": structpb.NewStringValue("CategoryID4"), "Name": structpb.NewStringValue("Category4")}})}}),
+				"CategoryIds":              structpb.NewListValue(&structpb.ListValue{Values: []*structpb.Value{structpb.NewStringValue("CategoryID1"), structpb.NewStringValue("CategoryID2"), structpb.NewStringValue("CategoryID3"), structpb.NewStringValue("CategoryID4")}}),
+				"KbArticleId":              structpb.NewListValue(&structpb.ListValue{Values: []*structpb.Value{structpb.NewStringValue("KB1"), structpb.NewStringValue("KB2"), structpb.NewStringValue("KB3"), structpb.NewStringValue("KB4")}}),
+				"MoreInfoUrls":             structpb.NewListValue(&structpb.ListValue{Values: []*structpb.Value{structpb.NewStringValue("MoreInfoURL1"), structpb.NewStringValue("MoreInfoURL2"), structpb.NewStringValue("MoreInfoURL3"), structpb.NewStringValue("MoreInfoURL4")}}),
+				"RevisionNumber":           structpb.NewNumberValue(1),
+				"LastDeploymentChangeTime": structpb.NewStringValue(time.Date(2020, time.November, 10, 23, 0, 0, 0, time.UTC).String()),
+			}}},
+			{Name: "QFEInstalled", Type: "QFEPackage", Version: "HotFixID", Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
+				"Description": structpb.NewStringValue("Description"),
+				"InstalledOn": structpb.NewStringValue("9/1/2020"),
+			}}},
+		},
+		AvailablePackages: []*agentendpointpb.VmInventory_InventoryItem{
+			{Name: "AptPkgUpdate", Type: "deb", Version: "Version", Purl: "", Location: []string{}, Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
+				"SourceName":    structpb.NewStringValue(""),
+				"SourceVersion": structpb.NewStringValue(""),
+			}}},
+			{Name: "GooGetPkgUpdate", Type: "googet", Version: "Version", Purl: "", Location: []string{}, Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{}}},
+			{Name: "YumPkgUpdate", Type: "rpm", Version: "Version", Purl: "", Location: []string{}, Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
+				"SourceRPM": structpb.NewStringValue(""),
+			}}},
+			{Name: "ZypperPkgUpdate", Type: "rpm", Version: "Version", Purl: "", Location: []string{}, Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
+				"SourceRPM": structpb.NewStringValue(""),
+			}}},
+			{Name: "ZypperPatchUpdate", Type: "ZypperPatch", Version: "", Purl: "", Location: []string{}, Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
+				"Category": structpb.NewStringValue("Category"),
+				"Severity": structpb.NewStringValue("Severity"),
+				"Summary":  structpb.NewStringValue("Summary"),
+			}}},
+			{Name: "WUAUpdate", Type: "WUAPackage", Version: "UpdateID", Purl: "SupportURL", Location: []string{}, Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
+				"Description": structpb.NewStringValue("Description"),
+				"Categories": structpb.NewListValue(&structpb.ListValue{Values: []*structpb.Value{structpb.NewStructValue(&structpb.Struct{Fields: map[string]*structpb.Value{"Id": structpb.NewStringValue("CategoryID1"), "Name": structpb.NewStringValue("Category1")}}),
+					structpb.NewStructValue(&structpb.Struct{Fields: map[string]*structpb.Value{"Id": structpb.NewStringValue("CategoryID2"), "Name": structpb.NewStringValue("Category2")}}),
+					structpb.NewStructValue(&structpb.Struct{Fields: map[string]*structpb.Value{"Id": structpb.NewStringValue("CategoryID3"), "Name": structpb.NewStringValue("Category3")}}),
+					structpb.NewStructValue(&structpb.Struct{Fields: map[string]*structpb.Value{"Id": structpb.NewStringValue("CategoryID4"), "Name": structpb.NewStringValue("Category4")}})}}),
+				"CategoryIds":              structpb.NewListValue(&structpb.ListValue{Values: []*structpb.Value{structpb.NewStringValue("CategoryID1"), structpb.NewStringValue("CategoryID2"), structpb.NewStringValue("CategoryID3"), structpb.NewStringValue("CategoryID4")}}),
+				"KbArticleId":              structpb.NewListValue(&structpb.ListValue{Values: []*structpb.Value{structpb.NewStringValue("KB1"), structpb.NewStringValue("KB2"), structpb.NewStringValue("KB3"), structpb.NewStringValue("KB4")}}),
+				"MoreInfoUrls":             structpb.NewListValue(&structpb.ListValue{Values: []*structpb.Value{structpb.NewStringValue("MoreInfoURL1"), structpb.NewStringValue("MoreInfoURL2"), structpb.NewStringValue("MoreInfoURL3"), structpb.NewStringValue("MoreInfoURL4")}}),
+				"RevisionNumber":           structpb.NewNumberValue(1),
+				"LastDeploymentChangeTime": structpb.NewStringValue("0001-01-01 00:00:00 +0000 UTC"),
+			}}},
 		},
 	}
 }
@@ -445,6 +561,7 @@ func TestWrite(t *testing.T) {
 func TestReport(t *testing.T) {
 	ctx := context.Background()
 	srv := &agentEndpointServiceInventoryTestServer{}
+	srv.useReportVmInventory = false
 	tc, err := newTestClient(ctx, srv)
 	if err != nil {
 		t.Fatal(err)
@@ -478,6 +595,50 @@ func TestReport(t *testing.T) {
 			tc.client.report(ctx, tt.inventoryState)
 
 			actualInventory := srv.lastReportInventoryRequest.Inventory
+			if diff := cmp.Diff(tt.wantInventory, actualInventory, protocmp.Transform()); diff != "" {
+				t.Fatalf("ReportInventoryRequest.Inventory mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestReportVmInventory(t *testing.T) {
+	ctx := context.Background()
+	srv := &agentEndpointServiceInventoryTestServer{}
+	srv.useReportVmInventory = true
+	tc, err := newTestClient(ctx, srv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tc.close()
+
+	tests := []struct {
+		name                string
+		reportFullInventory bool
+		inventoryState      *inventory.InstanceInventory
+		wantInventory       *agentendpointpb.VmInventory
+	}{
+		{
+			name:                "ReportChecksumOnly",
+			reportFullInventory: false,
+			inventoryState:      generateInventoryState(),
+			wantInventory:       nil,
+		},
+		{
+			name:                "ReportFullInventory",
+			reportFullInventory: true,
+			inventoryState:      generateInventoryState(),
+			wantInventory:       generateVmInventory(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv.reportFullInventory = tt.reportFullInventory
+
+			tc.client.report(ctx, tt.inventoryState)
+
+			actualInventory := srv.lastReportVmInventoryRequest.VmInventory
 			if diff := cmp.Diff(tt.wantInventory, actualInventory, protocmp.Transform()); diff != "" {
 				t.Fatalf("ReportInventoryRequest.Inventory mismatch (-want +got):\n%s", diff)
 			}
@@ -557,6 +718,46 @@ func Test_computeStableFingerprint_fingerprintChangedAfterChanging(t *testing.T)
 	}
 }
 
+func Test_computeStableFingerprintVmInventory_fingerprintNotChangedAfterReshuffle(t *testing.T) {
+	ctx := context.Background()
+	inventory := generateVmInventory()
+	initialFingerprint, err := computeStableFingerprintVmInventory(ctx, inventory)
+	if err != nil {
+		t.Fatalf("unable to generate initial fingerprint, err - %s", err)
+	}
+
+	vmInventoryPackagesMixer(time.Now().UnixNano())(inventory)
+
+	finalFingerprint, err := computeStableFingerprintVmInventory(ctx, inventory)
+	if err != nil {
+		t.Fatalf("unable to generate final fingerprint, err - %s", err)
+	}
+
+	if initialFingerprint != finalFingerprint {
+		t.Errorf("stable fingerprint is not equal for inventory with different order")
+	}
+}
+
+func Test_computeStableFingerprintVmInventory_fingerprintChangedAfterChanging(t *testing.T) {
+	ctx := context.Background()
+	inventory := generateVmInventory()
+	initialFingerprint, err := computeStableFingerprintVmInventory(ctx, inventory)
+	if err != nil {
+		t.Fatalf("unable to generate initial fingerprint, err - %s", err)
+	}
+
+	inventory.AvailablePackages = nil
+
+	finalFingerprint, err := computeStableFingerprintVmInventory(ctx, inventory)
+	if err != nil {
+		t.Fatalf("unable to generate final fingerprint, err - %s", err)
+	}
+
+	if initialFingerprint == finalFingerprint {
+		t.Errorf("stable fingerprint should not be equal if inventory is actually changed")
+	}
+}
+
 func validFingerprint(fingerprint string) bool {
 	if fingerprint == "" {
 		return false
@@ -620,6 +821,23 @@ func inventoryPackagesMixer(source int64) func(inventory *agentendpointpb.Invent
 	rng := rand.New(rand.NewSource(source))
 
 	return func(inventory *agentendpointpb.Inventory) {
+		rng.Shuffle(len(inventory.InstalledPackages), func(i, j int) {
+			inventory.InstalledPackages[i], inventory.InstalledPackages[j] = inventory.InstalledPackages[j], inventory.InstalledPackages[i]
+		})
+
+		rng.Shuffle(len(inventory.AvailablePackages), func(i, j int) {
+			inventory.AvailablePackages[i], inventory.AvailablePackages[j] = inventory.AvailablePackages[j], inventory.AvailablePackages[i]
+		})
+
+	}
+}
+
+func vmInventoryPackagesMixer(source int64) func(inventory *agentendpointpb.VmInventory) {
+	fmt.Printf("Inventory packages mixer initialized with source %d\n", source)
+
+	rng := rand.New(rand.NewSource(source))
+
+	return func(inventory *agentendpointpb.VmInventory) {
 		rng.Shuffle(len(inventory.InstalledPackages), func(i, j int) {
 			inventory.InstalledPackages[i], inventory.InstalledPackages[j] = inventory.InstalledPackages[j], inventory.InstalledPackages[i]
 		})

@@ -19,10 +19,13 @@ import (
 	"github.com/GoogleCloudPlatform/osconfig/packages"
 	"github.com/GoogleCloudPlatform/osconfig/retryutil"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"cloud.google.com/go/osconfig/agentendpoint/apiv1/agentendpointpb"
 	datepb "google.golang.org/genproto/googleapis/type/date"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -70,12 +73,17 @@ func write(ctx context.Context, state *inventory.InstanceInventory, url string) 
 func (c *Client) report(ctx context.Context, state *inventory.InstanceInventory) {
 	clog.Debugf(ctx, "Reporting instance inventory to agent endpoint.")
 	inventory := formatInventory(ctx, state)
+	vmInventory := formatVmInventory(ctx, state)
 
 	reportFull := false
 	var res *agentendpointpb.ReportInventoryResponse
+	var newRes *agentendpointpb.ReportVmInventoryResponse
 	var err error
 	f := func() error {
-		res, err = c.reportInventory(ctx, inventory, reportFull)
+		newRes, err = c.reportVmInventory(ctx, vmInventory, reportFull)
+		if st, _ := status.FromError(err); st.Code() == codes.FailedPrecondition {
+			res, err = c.reportInventory(ctx, inventory, reportFull)
+		}
 		if err != nil {
 			return err
 		}
@@ -87,13 +95,290 @@ func (c *Client) report(ctx context.Context, state *inventory.InstanceInventory)
 		return
 	}
 
-	if res.GetReportFullInventory() {
+	if res.GetReportFullInventory() || newRes.GetReportFullInventory() {
 		reportFull = true
 		if err = retryutil.RetryAPICall(ctx, apiRetrySec*time.Second, "ReportInventory", f); err != nil {
 			clog.Errorf(ctx, "Error reporting full inventory: %v", err)
 			return
 		}
 	}
+}
+
+func formatVmInventory(ctx context.Context, state *inventory.InstanceInventory) *agentendpointpb.VmInventory {
+	osInfo := &agentendpointpb.VmInventory_OsInfo{
+		HostName:             state.Hostname,
+		LongName:             state.LongName,
+		ShortName:            state.ShortName,
+		Version:              state.Version,
+		Architecture:         state.Architecture,
+		KernelVersion:        state.KernelVersion,
+		KernelRelease:        state.KernelRelease,
+		OsconfigAgentVersion: state.OSConfigAgentVersion,
+	}
+	installedPackages := formatInstalledPackages(ctx, state.NewInstalledPackages, state.InstalledPackages)
+	availablePackages := formatAvailablePackages(ctx, state.PackageUpdates)
+
+	return &agentendpointpb.VmInventory{OsInfo: osInfo, InstalledPackages: installedPackages, AvailablePackages: availablePackages}
+}
+
+func formatInstalledPackages(ctx context.Context, state []*packages.InventoryItem, oldState *packages.Packages) []*agentendpointpb.VmInventory_InventoryItem {
+	var softwarePackages []*agentendpointpb.VmInventory_InventoryItem
+	for _, pkg := range state {
+		metadataStruct, err := structpb.NewStruct(pkg.Metadata)
+		if err != nil {
+			clog.Errorf(ctx, "Error mapping package metadata: %v", err)
+		}
+		softwarePackages = append(softwarePackages, &agentendpointpb.VmInventory_InventoryItem{
+			Name:     pkg.Name,
+			Type:     pkg.Type,
+			Version:  pkg.Version,
+			Purl:     pkg.Purl,
+			Location: pkg.Location,
+			Metadata: metadataStruct,
+		})
+	}
+	softwarePackages = append(softwarePackages, formatPackagesUnsupportedByScalibr(ctx, oldState)...)
+	return softwarePackages
+}
+
+func formatAvailablePackages(ctx context.Context, pkgs *packages.Packages) []*agentendpointpb.VmInventory_InventoryItem {
+	var softwarePackages []*agentendpointpb.VmInventory_InventoryItem
+	if pkgs == nil {
+		return softwarePackages
+	}
+
+	if pkgs.Apt != nil {
+		temp := make([]*agentendpointpb.VmInventory_InventoryItem, len(pkgs.Apt))
+		for i, pkg := range pkgs.Apt {
+			temp[i] = &agentendpointpb.VmInventory_InventoryItem{
+				Name:     pkg.Name,
+				Type:     "deb",
+				Version:  pkg.Version,
+				Purl:     "",
+				Location: []string{},
+				Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
+					"SourceName":    structpb.NewStringValue(pkg.Source.Name),
+					"SourceVersion": structpb.NewStringValue(pkg.Source.Version),
+				}},
+			}
+		}
+		softwarePackages = append(softwarePackages, temp...)
+	}
+	if pkgs.Deb != nil {
+		temp := make([]*agentendpointpb.VmInventory_InventoryItem, len(pkgs.Deb))
+		for i, pkg := range pkgs.Deb {
+			temp[i] = &agentendpointpb.VmInventory_InventoryItem{
+				Name:     pkg.Name,
+				Type:     "deb",
+				Version:  pkg.Version,
+				Purl:     "",
+				Location: []string{},
+				Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
+					"SourceName":    structpb.NewStringValue(pkg.Source.Name),
+					"SourceVersion": structpb.NewStringValue(pkg.Source.Version),
+				}},
+			}
+		}
+		softwarePackages = append(softwarePackages, temp...)
+	}
+	if pkgs.GooGet != nil {
+		temp := make([]*agentendpointpb.VmInventory_InventoryItem, len(pkgs.GooGet))
+		for i, pkg := range pkgs.GooGet {
+			temp[i] = &agentendpointpb.VmInventory_InventoryItem{
+				Name:     pkg.Name,
+				Type:     "googet",
+				Version:  pkg.Version,
+				Purl:     "",
+				Location: []string{},
+				Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{}},
+			}
+		}
+		softwarePackages = append(softwarePackages, temp...)
+	}
+	if pkgs.Yum != nil {
+		temp := make([]*agentendpointpb.VmInventory_InventoryItem, len(pkgs.Yum))
+		for i, pkg := range pkgs.Yum {
+			temp[i] = &agentendpointpb.VmInventory_InventoryItem{
+				Name:     pkg.Name,
+				Type:     "rpm",
+				Version:  pkg.Version,
+				Purl:     "",
+				Location: []string{},
+				Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
+					"SourceRPM": structpb.NewStringValue(pkg.Source.Name),
+				}},
+			}
+		}
+		softwarePackages = append(softwarePackages, temp...)
+	}
+	if pkgs.Zypper != nil {
+		temp := make([]*agentendpointpb.VmInventory_InventoryItem, len(pkgs.Zypper))
+		for i, pkg := range pkgs.Zypper {
+			temp[i] = &agentendpointpb.VmInventory_InventoryItem{
+				Name:     pkg.Name,
+				Type:     "rpm",
+				Version:  pkg.Version,
+				Purl:     "",
+				Location: []string{},
+				Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
+					"SourceRPM": structpb.NewStringValue(pkg.Source.Name),
+				}},
+			}
+		}
+		softwarePackages = append(softwarePackages, temp...)
+	}
+	if pkgs.Rpm != nil {
+		temp := make([]*agentendpointpb.VmInventory_InventoryItem, len(pkgs.Rpm))
+		for i, pkg := range pkgs.Rpm {
+			temp[i] = &agentendpointpb.VmInventory_InventoryItem{
+				Name:     pkg.Name,
+				Type:     "rpm",
+				Version:  pkg.Version,
+				Purl:     "",
+				Location: []string{},
+				Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
+					"SourceRPM": structpb.NewStringValue(pkg.Source.Name),
+				}},
+			}
+		}
+		softwarePackages = append(softwarePackages, temp...)
+	}
+	if pkgs.COS != nil {
+		temp := make([]*agentendpointpb.VmInventory_InventoryItem, len(pkgs.COS))
+		for i, pkg := range pkgs.COS {
+			temp[i] = &agentendpointpb.VmInventory_InventoryItem{
+				Name:     pkg.Name,
+				Type:     "cos",
+				Version:  pkg.Version,
+				Purl:     "",
+				Location: []string{},
+				Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{}},
+			}
+		}
+		softwarePackages = append(softwarePackages, temp...)
+	}
+	softwarePackages = append(softwarePackages, formatPackagesUnsupportedByScalibr(ctx, pkgs)...)
+
+	return softwarePackages
+}
+
+func formatPackagesUnsupportedByScalibr(ctx context.Context, pkgs *packages.Packages) []*agentendpointpb.VmInventory_InventoryItem {
+	var softwarePackages []*agentendpointpb.VmInventory_InventoryItem
+	if pkgs == nil {
+		return softwarePackages
+	}
+
+	if pkgs.ZypperPatches != nil {
+		temp := make([]*agentendpointpb.VmInventory_InventoryItem, len(pkgs.ZypperPatches))
+		for i, pkg := range pkgs.ZypperPatches {
+			temp[i] = &agentendpointpb.VmInventory_InventoryItem{
+				Name:     pkg.Name,
+				Type:     "ZypperPatch",
+				Version:  "",
+				Purl:     "",
+				Location: []string{},
+				Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
+					"Category": structpb.NewStringValue(pkg.Category),
+					"Severity": structpb.NewStringValue(pkg.Severity),
+					"Summary":  structpb.NewStringValue(pkg.Summary),
+				}},
+			}
+		}
+		softwarePackages = append(softwarePackages, temp...)
+	}
+	if pkgs.WUA != nil {
+		temp := make([]*agentendpointpb.VmInventory_InventoryItem, len(pkgs.WUA))
+		for i, pkg := range pkgs.WUA {
+			categoriesList := formatToCategoriesList(pkg.CategoryIDs, pkg.Categories)
+			kbArticleIdsList := formatToStructList(pkg.KBArticleIDs)
+			moreInfoUrls := formatToStructList(pkg.MoreInfoURLs)
+			categoryIds := formatToStructList(pkg.CategoryIDs)
+			temp[i] = &agentendpointpb.VmInventory_InventoryItem{
+				Name:     pkg.Title,
+				Type:     "WUAPackage",
+				Version:  pkg.UpdateID,
+				Purl:     pkg.SupportURL,
+				Location: []string{},
+				Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
+					"Description":              structpb.NewStringValue(pkg.Description),
+					"Categories":               structpb.NewListValue(categoriesList),
+					"CategoryIds":              structpb.NewListValue(categoryIds),
+					"KbArticleId":              structpb.NewListValue(kbArticleIdsList),
+					"MoreInfoUrls":             structpb.NewListValue(moreInfoUrls),
+					"RevisionNumber":           structpb.NewNumberValue(float64(pkg.RevisionNumber)),
+					"LastDeploymentChangeTime": structpb.NewStringValue(pkg.LastDeploymentChangeTime.String()),
+				}},
+			}
+		}
+		softwarePackages = append(softwarePackages, temp...)
+	}
+	if pkgs.QFE != nil {
+		temp := make([]*agentendpointpb.VmInventory_InventoryItem, len(pkgs.QFE))
+		for i, pkg := range pkgs.QFE {
+			temp[i] = &agentendpointpb.VmInventory_InventoryItem{
+				Name:     pkg.Caption,
+				Type:     "QFEPackage",
+				Version:  pkg.HotFixID,
+				Purl:     "",
+				Location: []string{},
+				Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
+					"Description": structpb.NewStringValue(pkg.Description),
+					"InstalledOn": structpb.NewStringValue(pkg.InstalledOn),
+				}},
+			}
+		}
+		softwarePackages = append(softwarePackages, temp...)
+	}
+	if pkgs.WindowsApplication != nil {
+		temp := make([]*agentendpointpb.VmInventory_InventoryItem, len(pkgs.WindowsApplication))
+		for i, pkg := range pkgs.WindowsApplication {
+			temp[i] = &agentendpointpb.VmInventory_InventoryItem{
+				Name:     pkg.DisplayName,
+				Type:     "WindowsApplication",
+				Version:  pkg.DisplayVersion,
+				Purl:     "",
+				Location: []string{},
+				Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
+					"Publisher":   structpb.NewStringValue(pkg.Publisher),
+					"InstallDate": structpb.NewStringValue(pkg.InstallDate.String()),
+					"HelpLink":    structpb.NewStringValue(pkg.HelpLink),
+				}},
+			}
+		}
+		softwarePackages = append(softwarePackages, temp...)
+	}
+
+	return softwarePackages
+}
+
+func formatToStructList(stringArray []string) *structpb.ListValue {
+	var listAny []any
+	for _, entry := range stringArray {
+		listAny = append(listAny, entry)
+	}
+	structList, err := structpb.NewList(listAny)
+	if err != nil {
+
+	}
+	return structList
+}
+
+func formatToCategoriesList(categoryIds []string, categoryNames []string) *structpb.ListValue {
+	categoryList := &structpb.ListValue{}
+	for i := range categoryIds {
+		entry := map[string]any{
+			"Id":   categoryIds[i],
+			"Name": categoryNames[i],
+		}
+
+		v, err := structpb.NewValue(entry)
+		if err != nil {
+			continue
+		}
+
+		categoryList.Values = append(categoryList.Values, v)
+	}
+	return categoryList
 }
 
 func formatInventory(ctx context.Context, state *inventory.InstanceInventory) *agentendpointpb.Inventory {
@@ -407,6 +692,42 @@ func computeStableFingerprint(ctx context.Context, inventory *agentendpointpb.In
 	}
 
 	return hex.EncodeToString(fingerprint.Sum(nil)), nil
+}
+
+func computeStableFingerprintVmInventory(ctx context.Context, inventory *agentendpointpb.VmInventory) (string, error) {
+	fingerprint := sha256.New()
+	b, err := proto.Marshal(inventory.GetOsInfo())
+	if err != nil {
+		return "", err
+	}
+	io.Copy(fingerprint, bytes.NewReader(b))
+
+	installedPackages := inventory.GetInstalledPackages()
+	availablePackages := inventory.GetAvailablePackages()
+
+	entries := make([]string, 0, len(installedPackages)+len(availablePackages))
+
+	for _, pkg := range installedPackages {
+		entries = append(entries, fingerprintForInventoryItem(pkg))
+	}
+
+	for _, pkg := range availablePackages {
+		entries = append(entries, fingerprintForInventoryItem(pkg))
+	}
+
+	sort.Strings(entries)
+
+	for _, entry := range entries {
+		if _, err := io.WriteString(fingerprint, entry); err != nil {
+			return "", err
+		}
+	}
+
+	return hex.EncodeToString(fingerprint.Sum(nil)), nil
+}
+
+func fingerprintForInventoryItem(pkg *agentendpointpb.VmInventory_InventoryItem) string {
+	return pkg.String()
 }
 
 func fingerprintForPackage(pkg *agentendpointpb.Inventory_SoftwarePackage) string {

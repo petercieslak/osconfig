@@ -11,9 +11,9 @@ import (
 	"github.com/google/go-cmp/cmp"
 	scalibr "github.com/google/osv-scalibr"
 	"github.com/google/osv-scalibr/extractor"
-	scalibrcos "github.com/google/osv-scalibr/extractor/filesystem/os/cos"
+	scalibrcos "github.com/google/osv-scalibr/extractor/filesystem/os/cos/metadata"
 	dpkgmetadata "github.com/google/osv-scalibr/extractor/filesystem/os/dpkg/metadata"
-	scalibrrpm "github.com/google/osv-scalibr/extractor/filesystem/os/rpm"
+	scalibrrpm "github.com/google/osv-scalibr/extractor/filesystem/os/rpm/metadata"
 	"github.com/google/osv-scalibr/inventory"
 )
 
@@ -47,12 +47,12 @@ func TestExtractedPackageMappings(t *testing.T) {
 				{
 					Name:     "acl",
 					Version:  "2.2.51-15.el7",
-					Metadata: &scalibrrpm.Metadata{PackageName: "acl", SourceRPM: "acl-2.2.51-15.el7.src.rpm", Epoch: 0, OSName: "CentOS Linux", OSID: "centos", OSVersionID: "7", OSBuildID: "", Vendor: "CentOS", Architecture: "x86_64", License: "GPLv2+"},
+					Metadata: &scalibrrpm.Metadata{PackageName: "acl", SourceRPM: "acl-2.2.51-15.el7.src.rpm", Epoch: 0, OSName: "CentOS Linux", OSID: "centos", OSVersionID: "7", OSBuildID: "", Vendor: "CentOS", Architecture: "x86_64", OSCPEName: ""},
 				},
 				{
 					Name:     "gpg-pubkey",
 					Version:  "352c64e5-52ae6884",
-					Metadata: &scalibrrpm.Metadata{PackageName: "gpg-pubkey", SourceRPM: "", Epoch: 0, OSName: "CentOS Linux", OSID: "centos", OSVersionID: "7", OSBuildID: "", Vendor: "", Architecture: "", License: "pubkey"},
+					Metadata: &scalibrrpm.Metadata{PackageName: "gpg-pubkey", SourceRPM: "", Epoch: 0, OSName: "CentOS Linux", OSID: "centos", OSVersionID: "7", OSBuildID: "", Vendor: "", Architecture: "", OSCPEName: ""},
 				},
 			},
 			want: Packages{Rpm: []*PkgInfo{
@@ -148,6 +148,61 @@ func TestScalibrIntegration(t *testing.T) {
 	}
 	for _, tt := range tests {
 		pkgs, err := tt.provider.GetInstalledPackages(context.Background())
+
+		if !reflect.DeepEqual(err, tt.wantErr) {
+			t.Errorf("err: want %v, got %v", tt.wantErr, err)
+		}
+
+		if !reflect.DeepEqual(pkgs, tt.wantPkgs) {
+			t.Errorf("pkgs: want %v, got %v", tt.wantPkgs, pkgs)
+		}
+	}
+}
+
+func TestScalibrIntegration_GetScalibrInstalledPackages(t *testing.T) {
+	withZypperDisabled(t)
+	tests := []struct {
+		provider ScalibrPackagesProvider
+		wantErr  error
+		wantPkgs []*InventoryItem
+	}{
+		{
+			provider: scalibrInstalledPackagesProvider{
+				osinfoProvider: stubProvider{},
+				extractors:     []string{"os/dpkg"},
+				scanRootPaths:  []string{arrangeVirtualRoot(t, "./testdata/debian.dpkg-status", "/var/lib/dpkg/status")},
+				dirsToSkip:     []string{},
+			},
+			wantPkgs: []*InventoryItem{
+				{Name: "7zip", Type: "deb", Version: "24.09+dfsg-4", Purl: "pkg:deb/linux/7zip@24.09%2Bdfsg-4?arch=amd64", Location: []string{"var/lib/dpkg/status"}, Metadata: map[string]any{
+					"PackageName":       "7zip",
+					"Status":            "install ok installed",
+					"SourceName":        "",
+					"SourceVersion":     "",
+					"PackageSource":     "",
+					"PackageVersion":    "24.09+dfsg-4",
+					"OSID":              "",
+					"OSVersionCodename": "",
+					"OSVersionID":       "",
+					"Maintainer":        "YOKOTA Hiroshi <yokota.hgml@gmail.com>",
+					"Architecture":      "amd64"}},
+				{Name: "llvm-16", Type: "deb", Version: "1:16.0.6-27+build3", Purl: "pkg:deb/linux/llvm-16@1%3A16.0.6-27%2Bbuild3?arch=amd64&source=llvm-toolchain-16", Location: []string{"var/lib/dpkg/status"}, Metadata: map[string]any{
+					"PackageName":       "llvm-16",
+					"Status":            "install ok installed",
+					"SourceName":        "llvm-toolchain-16",
+					"SourceVersion":     "",
+					"PackageSource":     "",
+					"PackageVersion":    "1:16.0.6-27+build3",
+					"OSID":              "",
+					"OSVersionCodename": "",
+					"OSVersionID":       "",
+					"Maintainer":        "LLVM Packaging Team <pkg-llvm-team@lists.alioth.debian.org>",
+					"Architecture":      "amd64"}},
+			},
+		},
+	}
+	for _, tt := range tests {
+		pkgs, err := tt.provider.GetScalibrInstalledPackages(context.Background())
 
 		if !reflect.DeepEqual(err, tt.wantErr) {
 			t.Errorf("err: want %v, got %v", tt.wantErr, err)
