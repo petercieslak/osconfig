@@ -172,13 +172,13 @@ func (c *Client) reportInventory(ctx context.Context, inventory *agentendpointpb
 	return resp, err
 }
 
-func (c *Client) reportVmInventory(ctx context.Context, inventory *agentendpointpb.VmInventory, reportFull bool) (*agentendpointpb.ReportVmInventoryResponse, error) {
+func (c *Client) reportVMInventory(ctx context.Context, inventory *agentendpointpb.VmInventory, reportFull bool) (*agentendpointpb.ReportVmInventoryResponse, error) {
 	token, err := agentconfig.IDToken()
 	if err != nil {
 		return nil, err
 	}
 
-	checksum, err := computeStableFingerprintVmInventory(ctx, inventory)
+	checksum, err := computeStableFingerprintVMInventory(ctx, inventory)
 	if err != nil {
 		return nil, fmt.Errorf("unable to compute hash, err: %w", err)
 	}

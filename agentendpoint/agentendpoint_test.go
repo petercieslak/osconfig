@@ -216,6 +216,7 @@ func (*agentEndpointServiceTestServer) ReportInventory(ctx context.Context, req 
 	return nil, status.Errorf(codes.Unimplemented, "method ReportInventory not implemented")
 }
 
+// Ignore golint initialism warning for this method as this is an API implementation.
 func (*agentEndpointServiceTestServer) ReportVmInventory(ctx context.Context, req *agentendpointpb.ReportVmInventoryRequest) (*agentendpointpb.ReportVmInventoryResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReportVmInventory not implemented")
 }

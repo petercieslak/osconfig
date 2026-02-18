@@ -196,13 +196,13 @@ func NewInstalledPackagesProvider(osinfoProvider osinfo.Provider) InstalledPacka
 	return defaultInstalledPackagesProvider{}
 }
 
+// ScalibrInstalledPackagesProvider uses osv-scalibr as its implementation.
 func ScalibrInstalledPackagesProvider(osinfoProvider osinfo.Provider) ScalibrPackagesProvider {
 	return scalibrInstalledPackagesProvider{
 		extractors: []string{
 			"os/cos",
 			"os/dpkg",
 			"os/rpm",
-			"windows/ospackages",
 		},
 		osinfoProvider: osinfoProvider,
 	}

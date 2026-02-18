@@ -11,9 +11,9 @@ import (
 	"github.com/google/go-cmp/cmp"
 	scalibr "github.com/google/osv-scalibr"
 	"github.com/google/osv-scalibr/extractor"
-	scalibrcos "github.com/google/osv-scalibr/extractor/filesystem/os/cos/metadata"
+	scalibrcos "github.com/google/osv-scalibr/extractor/filesystem/os/cos"
 	dpkgmetadata "github.com/google/osv-scalibr/extractor/filesystem/os/dpkg/metadata"
-	scalibrrpm "github.com/google/osv-scalibr/extractor/filesystem/os/rpm/metadata"
+	scalibrrpm "github.com/google/osv-scalibr/extractor/filesystem/os/rpm"
 	"github.com/google/osv-scalibr/inventory"
 )
 
@@ -47,12 +47,12 @@ func TestExtractedPackageMappings(t *testing.T) {
 				{
 					Name:     "acl",
 					Version:  "2.2.51-15.el7",
-					Metadata: &scalibrrpm.Metadata{PackageName: "acl", SourceRPM: "acl-2.2.51-15.el7.src.rpm", Epoch: 0, OSName: "CentOS Linux", OSID: "centos", OSVersionID: "7", OSBuildID: "", Vendor: "CentOS", Architecture: "x86_64", OSCPEName: ""},
+					Metadata: &scalibrrpm.Metadata{PackageName: "acl", SourceRPM: "acl-2.2.51-15.el7.src.rpm", Epoch: 0, OSName: "CentOS Linux", OSID: "centos", OSVersionID: "7", OSBuildID: "", Vendor: "CentOS", Architecture: "x86_64", License: "GPLv2+"},
 				},
 				{
 					Name:     "gpg-pubkey",
 					Version:  "352c64e5-52ae6884",
-					Metadata: &scalibrrpm.Metadata{PackageName: "gpg-pubkey", SourceRPM: "", Epoch: 0, OSName: "CentOS Linux", OSID: "centos", OSVersionID: "7", OSBuildID: "", Vendor: "", Architecture: "", OSCPEName: ""},
+					Metadata: &scalibrrpm.Metadata{PackageName: "gpg-pubkey", SourceRPM: "", Epoch: 0, OSName: "CentOS Linux", OSID: "centos", OSVersionID: "7", OSBuildID: "", Vendor: "", Architecture: "", License: "pubkey"},
 				},
 			},
 			want: Packages{Rpm: []*PkgInfo{
@@ -179,7 +179,6 @@ func TestScalibrIntegration_GetScalibrInstalledPackages(t *testing.T) {
 					"Status":            "install ok installed",
 					"SourceName":        "",
 					"SourceVersion":     "",
-					"PackageSource":     "",
 					"PackageVersion":    "24.09+dfsg-4",
 					"OSID":              "",
 					"OSVersionCodename": "",
@@ -191,7 +190,6 @@ func TestScalibrIntegration_GetScalibrInstalledPackages(t *testing.T) {
 					"Status":            "install ok installed",
 					"SourceName":        "llvm-toolchain-16",
 					"SourceVersion":     "",
-					"PackageSource":     "",
 					"PackageVersion":    "1:16.0.6-27+build3",
 					"OSID":              "",
 					"OSVersionCodename": "",

@@ -43,9 +43,9 @@ import (
 
 type agentEndpointServiceInventoryTestServer struct {
 	lastReportInventoryRequest   *agentendpointpb.ReportInventoryRequest
-	lastReportVmInventoryRequest *agentendpointpb.ReportVmInventoryRequest
+	lastReportVMInventoryRequest *agentendpointpb.ReportVmInventoryRequest
 	reportFullInventory          bool
-	useReportVmInventory         bool
+	useReportVMInventory         bool
 }
 
 func (*agentEndpointServiceInventoryTestServer) ReceiveTaskNotification(req *agentendpointpb.ReceiveTaskNotificationRequest, srv agentendpointpb.AgentEndpointService_ReceiveTaskNotificationServer) error {
@@ -77,17 +77,17 @@ func (s *agentEndpointServiceInventoryTestServer) ReportInventory(ctx context.Co
 	return resp, nil
 }
 
+// Ignore golint initialism warning for this method as this is an API implementation.
 func (s *agentEndpointServiceInventoryTestServer) ReportVmInventory(ctx context.Context, req *agentendpointpb.ReportVmInventoryRequest) (*agentendpointpb.ReportVmInventoryResponse, error) {
-	if s.useReportVmInventory == false {
+	if s.useReportVMInventory == false {
 		return nil, status.Errorf(codes.FailedPrecondition, "Feature is not available yet.")
-	} else {
-		s.lastReportVmInventoryRequest = req
-		resp := &agentendpointpb.ReportVmInventoryResponse{ReportFullInventory: s.reportFullInventory}
-		if s.reportFullInventory {
-			s.reportFullInventory = false
-		}
-		return resp, nil
 	}
+	s.lastReportVMInventoryRequest = req
+	resp := &agentendpointpb.ReportVmInventoryResponse{ReportFullInventory: s.reportFullInventory}
+	if s.reportFullInventory {
+		s.reportFullInventory = false
+	}
+	return resp, nil
 }
 
 func generateInventoryState() *inventory.InstanceInventory {
@@ -175,7 +175,7 @@ func generateInventoryState() *inventory.InstanceInventory {
 	}
 }
 
-func generateVmInventory() *agentendpointpb.VmInventory {
+func generateVMInventory() *agentendpointpb.VmInventory {
 	return &agentendpointpb.VmInventory{
 		OsInfo: &agentendpointpb.VmInventory_OsInfo{
 			HostName:             "Hostname",
@@ -561,7 +561,7 @@ func TestWrite(t *testing.T) {
 func TestReport(t *testing.T) {
 	ctx := context.Background()
 	srv := &agentEndpointServiceInventoryTestServer{}
-	srv.useReportVmInventory = false
+	srv.useReportVMInventory = false
 	tc, err := newTestClient(ctx, srv)
 	if err != nil {
 		t.Fatal(err)
@@ -605,7 +605,7 @@ func TestReport(t *testing.T) {
 func TestReportVmInventory(t *testing.T) {
 	ctx := context.Background()
 	srv := &agentEndpointServiceInventoryTestServer{}
-	srv.useReportVmInventory = true
+	srv.useReportVMInventory = true
 	tc, err := newTestClient(ctx, srv)
 	if err != nil {
 		t.Fatal(err)
@@ -628,7 +628,7 @@ func TestReportVmInventory(t *testing.T) {
 			name:                "ReportFullInventory",
 			reportFullInventory: true,
 			inventoryState:      generateInventoryState(),
-			wantInventory:       generateVmInventory(),
+			wantInventory:       generateVMInventory(),
 		},
 	}
 
@@ -638,7 +638,7 @@ func TestReportVmInventory(t *testing.T) {
 
 			tc.client.report(ctx, tt.inventoryState)
 
-			actualInventory := srv.lastReportVmInventoryRequest.VmInventory
+			actualInventory := srv.lastReportVMInventoryRequest.VmInventory
 			if diff := cmp.Diff(tt.wantInventory, actualInventory, protocmp.Transform()); diff != "" {
 				t.Fatalf("ReportInventoryRequest.Inventory mismatch (-want +got):\n%s", diff)
 			}
@@ -720,15 +720,15 @@ func Test_computeStableFingerprint_fingerprintChangedAfterChanging(t *testing.T)
 
 func Test_computeStableFingerprintVmInventory_fingerprintNotChangedAfterReshuffle(t *testing.T) {
 	ctx := context.Background()
-	inventory := generateVmInventory()
-	initialFingerprint, err := computeStableFingerprintVmInventory(ctx, inventory)
+	inventory := generateVMInventory()
+	initialFingerprint, err := computeStableFingerprintVMInventory(ctx, inventory)
 	if err != nil {
 		t.Fatalf("unable to generate initial fingerprint, err - %s", err)
 	}
 
 	vmInventoryPackagesMixer(time.Now().UnixNano())(inventory)
 
-	finalFingerprint, err := computeStableFingerprintVmInventory(ctx, inventory)
+	finalFingerprint, err := computeStableFingerprintVMInventory(ctx, inventory)
 	if err != nil {
 		t.Fatalf("unable to generate final fingerprint, err - %s", err)
 	}
@@ -740,15 +740,15 @@ func Test_computeStableFingerprintVmInventory_fingerprintNotChangedAfterReshuffl
 
 func Test_computeStableFingerprintVmInventory_fingerprintChangedAfterChanging(t *testing.T) {
 	ctx := context.Background()
-	inventory := generateVmInventory()
-	initialFingerprint, err := computeStableFingerprintVmInventory(ctx, inventory)
+	inventory := generateVMInventory()
+	initialFingerprint, err := computeStableFingerprintVMInventory(ctx, inventory)
 	if err != nil {
 		t.Fatalf("unable to generate initial fingerprint, err - %s", err)
 	}
 
 	inventory.AvailablePackages = nil
 
-	finalFingerprint, err := computeStableFingerprintVmInventory(ctx, inventory)
+	finalFingerprint, err := computeStableFingerprintVMInventory(ctx, inventory)
 	if err != nil {
 		t.Fatalf("unable to generate final fingerprint, err - %s", err)
 	}

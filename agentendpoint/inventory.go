@@ -73,14 +73,14 @@ func write(ctx context.Context, state *inventory.InstanceInventory, url string) 
 func (c *Client) report(ctx context.Context, state *inventory.InstanceInventory) {
 	clog.Debugf(ctx, "Reporting instance inventory to agent endpoint.")
 	inventory := formatInventory(ctx, state)
-	vmInventory := formatVmInventory(ctx, state)
+	vmInventory := formatVMInventory(ctx, state)
 
 	reportFull := false
 	var res *agentendpointpb.ReportInventoryResponse
 	var newRes *agentendpointpb.ReportVmInventoryResponse
 	var err error
 	f := func() error {
-		newRes, err = c.reportVmInventory(ctx, vmInventory, reportFull)
+		newRes, err = c.reportVMInventory(ctx, vmInventory, reportFull)
 		if st, _ := status.FromError(err); st.Code() == codes.FailedPrecondition {
 			res, err = c.reportInventory(ctx, inventory, reportFull)
 		}
@@ -104,7 +104,7 @@ func (c *Client) report(ctx context.Context, state *inventory.InstanceInventory)
 	}
 }
 
-func formatVmInventory(ctx context.Context, state *inventory.InstanceInventory) *agentendpointpb.VmInventory {
+func formatVMInventory(ctx context.Context, state *inventory.InstanceInventory) *agentendpointpb.VmInventory {
 	osInfo := &agentendpointpb.VmInventory_OsInfo{
 		HostName:             state.Hostname,
 		LongName:             state.LongName,
@@ -694,7 +694,7 @@ func computeStableFingerprint(ctx context.Context, inventory *agentendpointpb.In
 	return hex.EncodeToString(fingerprint.Sum(nil)), nil
 }
 
-func computeStableFingerprintVmInventory(ctx context.Context, inventory *agentendpointpb.VmInventory) (string, error) {
+func computeStableFingerprintVMInventory(ctx context.Context, inventory *agentendpointpb.VmInventory) (string, error) {
 	fingerprint := sha256.New()
 	b, err := proto.Marshal(inventory.GetOsInfo())
 	if err != nil {

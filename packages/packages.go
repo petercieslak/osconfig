@@ -72,6 +72,7 @@ type InstalledPackagesProvider interface {
 	GetInstalledPackages(context.Context) (Packages, error)
 }
 
+// ScalibrPackagesProvider defines a contract to extract installed packages via osv-scalibr from the VM.
 type ScalibrPackagesProvider interface {
 	GetScalibrInstalledPackages(context.Context) ([]*InventoryItem, error)
 }
@@ -110,6 +111,7 @@ type Packages struct {
 	WindowsApplication []*WindowsApplication `json:"-"`
 }
 
+// InventoryItem describes a package.
 type InventoryItem struct {
 	Name     string
 	Type     string
