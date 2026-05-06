@@ -220,13 +220,13 @@ func generateVMInventory() *agentendpointpb.VmInventory {
 				"KbArticleId":              structpb.NewListValue(&structpb.ListValue{Values: []*structpb.Value{structpb.NewStringValue("KB1"), structpb.NewStringValue("KB2"), structpb.NewStringValue("KB3"), structpb.NewStringValue("KB4")}}),
 				"MoreInfoUrls":             structpb.NewListValue(&structpb.ListValue{Values: []*structpb.Value{structpb.NewStringValue("MoreInfoURL1"), structpb.NewStringValue("MoreInfoURL2"), structpb.NewStringValue("MoreInfoURL3"), structpb.NewStringValue("MoreInfoURL4")}}),
 				"RevisionNumber":           structpb.NewNumberValue(1),
-				"LastDeploymentChangeTime": structpb.NewStringValue(time.Date(2020, time.November, 10, 23, 0, 0, 0, time.UTC).String()),
+				"LastDeploymentChangeTime": structpb.NewStringValue("2020-11-10 23:00:00 +0000 GMT"),
 				"SupportUrl":               structpb.NewStringValue("SupportURL"),
 			}}},
 			{Name: "QFEInstalled", Type: "qfePackage", Version: "HotFixID", Purl: "pkg:generic/ShortName/QFEInstalled@HotFixID",
 				Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
 					"Description": structpb.NewStringValue("Description"),
-					"InstalledOn": structpb.NewStringValue("9/1/2020"),
+					"InstalledOn": structpb.NewStringValue("2020-09-01 00:00:00 +0000 GMT"),
 				}}},
 		},
 		AvailablePackages: []*agentendpointpb.VmInventory_InventoryItem{
@@ -262,7 +262,7 @@ func generateVMInventory() *agentendpointpb.VmInventory {
 					"KbArticleId":              structpb.NewListValue(&structpb.ListValue{Values: []*structpb.Value{structpb.NewStringValue("KB1"), structpb.NewStringValue("KB2"), structpb.NewStringValue("KB3"), structpb.NewStringValue("KB4")}}),
 					"MoreInfoUrls":             structpb.NewListValue(&structpb.ListValue{Values: []*structpb.Value{structpb.NewStringValue("MoreInfoURL1"), structpb.NewStringValue("MoreInfoURL2"), structpb.NewStringValue("MoreInfoURL3"), structpb.NewStringValue("MoreInfoURL4")}}),
 					"RevisionNumber":           structpb.NewNumberValue(1),
-					"LastDeploymentChangeTime": structpb.NewStringValue("0001-01-01 00:00:00 +0000 UTC"),
+					"LastDeploymentChangeTime": structpb.NewStringValue("0001-01-01 00:00:00 +0000 GMT"),
 					"SupportUrl":               structpb.NewStringValue("SupportURL"),
 				}}},
 		},
@@ -832,3 +832,84 @@ func Benchmark_computeStableFingerprint(b *testing.B) {
 		}
 	}
 }
+
+func TestWindowsApplicationToInventoryItem(t *testing.T) {
+	apps := []*packages.WindowsApplication{{
+		DisplayName:    "TestApp",
+		DisplayVersion: "1.0",
+		InstallDate:    time.Date(2026, 4, 28, 14, 30, 0, 0, time.UTC),
+		Publisher:      "TestPublisher",
+		HelpLink:       "TestLink",
+		Purl:           "pkg:generic/TestApp@1.0",
+	}}
+
+	got := windowsApplicationToInventoryItem(apps)
+	if len(got) != 1 {
+		t.Fatalf("Expected 1 item, got %d", len(got))
+	}
+
+	fields := got[0].Metadata.Fields
+	if fields["Publisher"].GetStringValue() != "TestPublisher" {
+		t.Errorf("Expected Publisher 'TestPublisher', got '%s'", fields["Publisher"].GetStringValue())
+	}
+	if fields["InstallDate"].GetStringValue() != "2026-04-28 14:30:00 +0000 GMT" {
+		t.Errorf("Expected InstallDate '2026-04-28 14:30:00 +0000 GMT', got '%s'", fields["InstallDate"].GetStringValue())
+	}
+	if fields["HelpLink"].GetStringValue() != "TestLink" {
+		t.Errorf("Expected HelpLink 'TestLink', got '%s'", fields["HelpLink"].GetStringValue())
+	}
+}
+
+func TestParseQFEDate(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    time.Time
+		wantErr bool
+	}{
+		{
+			name:    "Format M/D/YYYY",
+			input:   "9/1/2020",
+			want:    time.Date(2020, time.September, 1, 0, 0, 0, 0, time.UTC),
+			wantErr: false,
+		},
+		{
+			name:    "Format YYYYMMDD",
+			input:   "20200901",
+			want:    time.Date(2020, time.September, 1, 0, 0, 0, 0, time.UTC),
+			wantErr: false,
+		},
+		{
+			name:    "Format YYYY-MM-DD",
+			input:   "2020-09-01",
+			want:    time.Date(2020, time.September, 1, 0, 0, 0, 0, time.UTC),
+			wantErr: false,
+		},
+		{
+			name:    "Format DD-Mon-YYYY",
+			input:   "01-Sep-2020",
+			want:    time.Date(2020, time.September, 1, 0, 0, 0, 0, time.UTC),
+			wantErr: false,
+		},
+		{
+			name:    "Invalid Format",
+			input:   "bad-date",
+			want:    time.Time{},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseQFEDate(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("parseQFEDate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && !got.Equal(tt.want) {
+				t.Errorf("parseQFEDate() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+

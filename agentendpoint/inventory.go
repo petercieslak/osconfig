@@ -169,7 +169,7 @@ func formatPkgsToInventoryItems(ctx context.Context, pkgs *packages.Packages) []
 		softwarePackages = append(softwarePackages, wuaToInventoryItem(pkgs.WUA)...)
 	}
 	if pkgs.QFE != nil {
-		softwarePackages = append(softwarePackages, qfeToInventoryItem(pkgs.QFE)...)
+		softwarePackages = append(softwarePackages, qfeToInventoryItem(ctx, pkgs.QFE)...)
 	}
 	if pkgs.WindowsApplication != nil {
 		softwarePackages = append(softwarePackages, windowsApplicationToInventoryItem(pkgs.WindowsApplication)...)
@@ -333,7 +333,7 @@ func wuaToInventoryItem(packages []*packages.WUAPackage) []*agentendpointpb.VmIn
 				"KbArticleId":              structpb.NewListValue(kbArticleIdsList),
 				"MoreInfoUrls":             structpb.NewListValue(moreInfoUrls),
 				"RevisionNumber":           structpb.NewNumberValue(float64(pkg.RevisionNumber)),
-				"LastDeploymentChangeTime": structpb.NewStringValue(pkg.LastDeploymentChangeTime.String()),
+				"LastDeploymentChangeTime": structpb.NewStringValue(pkg.LastDeploymentChangeTime.UTC().Format("2006-01-02 15:04:05 +0000 GMT")),
 				"SupportUrl":               structpb.NewStringValue(pkg.SupportURL),
 			}},
 		}
@@ -341,9 +341,15 @@ func wuaToInventoryItem(packages []*packages.WUAPackage) []*agentendpointpb.VmIn
 	return wuaFormattedPackages
 }
 
-func qfeToInventoryItem(packages []*packages.QFEPackage) []*agentendpointpb.VmInventory_InventoryItem {
+func qfeToInventoryItem(ctx context.Context, packages []*packages.QFEPackage) []*agentendpointpb.VmInventory_InventoryItem {
 	qfeFormattedPackages := make([]*agentendpointpb.VmInventory_InventoryItem, len(packages))
 	for i, pkg := range packages {
+		installedOn := pkg.InstalledOn
+		if t, err := parseQFEDate(pkg.InstalledOn); err == nil {
+			installedOn = t.UTC().Format("2006-01-02 15:04:05 +0000 GMT")
+		} else {
+			clog.Warningf(ctx, "Error parsing QFE InstalledOn date: %v", err)
+		}
 		qfeFormattedPackages[i] = &agentendpointpb.VmInventory_InventoryItem{
 			Name:     pkg.Caption,
 			Type:     "qfePackage",
@@ -352,7 +358,7 @@ func qfeToInventoryItem(packages []*packages.QFEPackage) []*agentendpointpb.VmIn
 			Location: []string{},
 			Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
 				"Description": structpb.NewStringValue(pkg.Description),
-				"InstalledOn": structpb.NewStringValue(pkg.InstalledOn),
+				"InstalledOn": structpb.NewStringValue(installedOn),
 			}},
 		}
 	}
@@ -370,7 +376,7 @@ func windowsApplicationToInventoryItem(packages []*packages.WindowsApplication) 
 			Location: []string{},
 			Metadata: &structpb.Struct{Fields: map[string]*structpb.Value{
 				"Publisher":   structpb.NewStringValue(pkg.Publisher),
-				"InstallDate": structpb.NewStringValue(pkg.InstallDate.String()),
+				"InstallDate": structpb.NewStringValue(pkg.InstallDate.UTC().Format("2006-01-02 15:04:05 +0000 GMT")),
 				"HelpLink":    structpb.NewStringValue(pkg.HelpLink),
 			}},
 		}
@@ -642,7 +648,7 @@ func formatWUAPackage(pkg *packages.WUAPackage) *agentendpointpb.Inventory_Softw
 }
 
 func formatQFEPackage(ctx context.Context, pkg *packages.QFEPackage) *agentendpointpb.Inventory_SoftwarePackage_QfePackage {
-	installedTime, err := time.Parse("1/2/2006", pkg.InstalledOn)
+	installedTime, err := parseQFEDate(pkg.InstalledOn)
 	if err != nil {
 		clog.Warningf(ctx, "Error parsing QFE InstalledOn date: %v", err)
 	}
@@ -766,4 +772,20 @@ func fingerprintForPackage(pkg *agentendpointpb.Inventory_SoftwarePackage) strin
 
 	// For all packages other then wua we can just rely on proto String() method.
 	return pkg.String()
+}
+
+func parseQFEDate(installedOn string) (time.Time, error) {
+	layouts := []string{
+		"1/2/2006",
+		"20060102",
+		"2006-01-02",
+		"02-Jan-2006",
+	}
+
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, installedOn); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unable to parse date %q with any known layout", installedOn)
 }
