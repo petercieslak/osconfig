@@ -15,6 +15,7 @@
 package agentendpoint
 
 import (
+	"context"
 	"os/exec"
 	"syscall"
 
@@ -27,7 +28,7 @@ const (
 	shutdown  = "/bin/shutdown"
 )
 
-func rebootSystem() error {
+func rebootSystem(_ context.Context) error {
 	// Start with systemctl and work down a list of reboot methods.
 	if e := util.Exists(systemctl); e {
 		return exec.Command(systemctl, "reboot").Start()
